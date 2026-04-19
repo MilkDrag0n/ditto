@@ -15,23 +15,32 @@ module compute_unit (
 	reg [31:0] weight_queue;
 	reg [15:0] data_queue;
 
-	wire [3:0] mul_src1;
-	wire [3:0] mul_src2;
-	wire [3:0] mul_src3;
-	wire [3:0] mul_src4;
-	wire [7:0] weight1;
-	wire [7:0] weight2;
-	wire [7:0] weight3;
-	wire [7:0] weight4;
+	wire signed [3:0] mul_src1;
+	wire signed [3:0] mul_src2;
+	wire signed [3:0] mul_src3;
+	wire signed [3:0] mul_src4;
+	wire signed [7:0] weight1;
+	wire signed [7:0] weight2;
+	wire signed [7:0] weight3;
+	wire signed [7:0] weight4;
 
-	wire [15:0] mul_res1;
-	wire [15:0] mul_res2;
-	wire [15:0] mul_res3;
-	wire [15:0] mul_res4;
+	wire signed [15:0] mul_res1;
+	wire signed [15:0] mul_res2;
+	wire signed [15:0] mul_res3;
+	wire signed [15:0] mul_res4;
 
-	wire [31:0] pe_res;
+	wire [17:0] mul_res1_ext;
+	wire [17:0] mul_res2_ext;
+	wire [17:0] mul_res3_ext;
+	wire [17:0] mul_res4_ext;
+
+	wire [17:0] pe_res;
 	reg  [31:0] res_reg;
 
+	// control
+	assign compute_fetch = 1'b1;
+
+	// 流水线寄存器
 	always @(posedge clk) begin
 		if(reset) begin
 			meta_data <= 0;
@@ -42,6 +51,7 @@ module compute_unit (
 			{meta_data, weight_queue, data_queue} <= encoding_bus;
 		end
 	end
+
 	// PE计算单元
 	assign {mul_src4, mul_src3, mul_src2, mul_src1} = data_queue;
 	assign {weight4, weight3, weight2, weight1} = weight_queue;
@@ -49,8 +59,14 @@ module compute_unit (
 	assign mul_res2 = mul_src2 * weight2;
 	assign mul_res3 = mul_src3 * weight3;
 	assign mul_res4 = mul_src4 * weight4;
-	assign pe_res   = (meta_data[0] ? (mul_res1 << 4) : mul_res1) + mul_res2
-					+ (meta_data[1] ? (mul_res3 << 4) : mul_res3) + mul_res4;
+
+	assign mul_res1_ext = {{2{mul_res1[15]}}, mul_res1};
+	assign mul_res2_ext = {{2{mul_res2[15]}}, mul_res2};
+	assign mul_res3_ext = {{2{mul_res3[15]}}, mul_res3};
+	assign mul_res4_ext = {{2{mul_res4[15]}}, mul_res4};
+
+	assign pe_res   = (meta_data[0] ? (mul_res2_ext << 4) : mul_res2_ext) + mul_res1_ext
+					+ (meta_data[1] ? (mul_res4_ext << 4) : mul_res4_ext) + mul_res3_ext;
 
 	// partial sum
 	always @(posedge clk) begin
@@ -58,11 +74,11 @@ module compute_unit (
 			res_reg <= 32'b0;
 		end
 		else if(encode_ready & compute_fetch) begin
-			res_reg <= res_reg + pe_res;
+			res_reg <= res_reg + {{14{pe_res[17]}}, pe_res};
 		end
 	end
 
-
+	assign result = res_reg;
 
 
 endmodule

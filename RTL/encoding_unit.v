@@ -34,10 +34,10 @@ module encoding_unit(
 	assign encoding_bus = {meta_data, weight_queue, data_queue};
 	assign commit_buffer = encode_ready & compute_fetch & buffer_valid;
 
-	// 计算差分, 比较
-	// 实例化一个差分计算模块, 使用bus信号和后面队列传输数据
-	// 分类类别(使用高低部分==0) 00: 0bit, 01: 4bit, 1x:8bit
+	// 计算差分, 比较分类 00: 0bit, 01: 4bit, 1x:8bit
+	// 文章图片显示的是无符号的处理方法,但是实际上得是有符号的
 	assign data_diff = input_data_now - input_data_pst;
+
 	always @(posedge clk) begin
 		if(reset) begin
 			control_signal <= 2'b0;
@@ -46,18 +46,9 @@ module encoding_unit(
 			data_diff_reg <= 8'b0;
 		end
 		else if(input_data_valid) begin
-			if (data_diff == 8'b0) begin
-				control_signal <= 2'b00; // Zero
-				diff_ready <= 1'b0;
-			end
-			else if (data_diff[7:4] == 4'b0) begin
-				control_signal <= 2'b01; // 4-bit
-				diff_ready <= 1'b1;
-			end
-			else begin
-				control_signal <= 2'b10; // 8-bit
-				diff_ready <= 1'b1;
-			end
+			control_signal[1] <= (data_diff[7:4] != {4{data_diff[3]}});
+			control_signal[0] <= (data_diff[3:0] != 4'b0);
+			diff_ready <= (data_diff != 8'b0);
 			weight_reg <= input_weight;
 			data_diff_reg <= data_diff;
 		end else begin
@@ -79,7 +70,6 @@ module encoding_unit(
 			weight_buffer <= 8'b0;
 		end
 		else begin
-			// 这两步得合起来
 			if(encode_ready & compute_fetch & ~diff_ready) begin
 				if(buffer_valid) begin
 					data_queue_status <= 4'b0001;
@@ -99,7 +89,7 @@ module encoding_unit(
 			else if (diff_ready) begin
 				if(encode_ready & compute_fetch) begin
 					if(buffer_valid) begin
-						case(control_signal)
+						casex(control_signal)
 							2'b01: begin
 								data_queue_status <= 4'b0011;
 								data_queue <= {8'b0, data_diff_reg[3:0], data_buffer};
@@ -109,7 +99,7 @@ module encoding_unit(
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
 							end
-							2'b10: begin
+							2'b1x: begin
 								// 0001填成0111
 								data_queue_status <= 4'b0111;
 								data_queue <={4'b0, data_diff_reg[3:0], data_diff_reg[7:4], data_buffer};
@@ -122,7 +112,7 @@ module encoding_unit(
 						endcase						
 					end
 					else begin
-						case(control_signal)
+						casex(control_signal)
 							2'b01: begin
 								data_queue_status <= 4'b0001;
 								data_queue <= {12'b0, data_diff_reg[3:0]};
@@ -132,7 +122,7 @@ module encoding_unit(
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
 							end
-							2'b10: begin
+							2'b1x: begin
 								// 0000填成0011
 								data_queue_status <= 4'b0011;
 								data_queue <={8'b0, data_diff_reg};
@@ -146,7 +136,7 @@ module encoding_unit(
 					end
 				end
 				else begin
-					case(control_signal) 
+					casex(control_signal) 
 						2'b01: begin
 							if(~data_queue_status[0]) begin
 								data_queue_status[0] <= 1'b1;
@@ -170,7 +160,7 @@ module encoding_unit(
 							end
 							// 满了, 不允许这种情况
 						end
-						2'b10: begin
+						2'b1x: begin
 							// 0000填成0011
 							if(data_queue_status == 4'b0000) begin
 								data_queue_status[1:0] <= 2'b11;
