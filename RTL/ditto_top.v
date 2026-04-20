@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 module ditto_top (
 	input  clk,
 	input  reset

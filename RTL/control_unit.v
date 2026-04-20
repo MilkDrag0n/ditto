@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 module control_unit(
 	input  clk,
 	input  reset,
@@ -19,9 +21,9 @@ module control_unit(
 			weight_addr   <= 8'b0000_0000;
 		end
 		else if (fetch) begin
-			data_pst_addr <= data_pst_addr + 2'b10;
-			data_now_addr <= data_now_addr + 2'b10;
-			weight_addr   <= weight_addr   + 2'b10;
+			data_pst_addr <= data_pst_addr + 1'b1;
+			data_now_addr <= data_now_addr + 1'b1;
+			weight_addr   <= weight_addr   + 1'b1;
 		end
 	end
 
@@ -29,6 +31,7 @@ module control_unit(
 		if(reset) begin
 			finish <= 1'b1;
 		end
+		// finish 信号会清除这一轮读到的数据, 在这里清除的是0000_1000对应的data
 		else if(data_pst_addr == 8'b0000_1000) begin  // 计算 16 组数然后提交
 			finish <= 1'b0;
 		end

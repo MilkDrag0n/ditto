@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 // 在这种同样利用空间差异的硬件中，只需要一个偏移寄存器来存储空间偏移量，以及一个多路复用器来将前一时间步的输入切换为空间偏移量。
 module encoding_unit(
 	input  clk,
@@ -24,6 +26,7 @@ module encoding_unit(
 	wire [ 7:0] weight;
 
 	reg			finish_reg;
+	reg			finish_buffer;
 	reg 		diff_ready;  // 第一拍差分完成
 	reg  [ 1:0] control_signal;
 	wire [ 7:0] data_diff;
@@ -83,6 +86,25 @@ module encoding_unit(
 			buffer_valid <= 1'b0;
 			data_buffer <= 4'b0;
 			weight_buffer <= 8'b0;
+			finish_buffer <= 1'b0;
+		end
+		else if(finish_buffer & encode_ready & compute_fetch) begin
+			data_queue_status <= 4'b1111;
+			meta_data <= 2'b0;
+			data_queue <= {12'b0, data_buffer};
+			weight_queue <= {24'b0, weight_buffer};
+			buffer_valid <= 1'b0;
+			data_buffer <= 4'b0;
+			weight_buffer <= 8'b0;
+			finish_buffer <= 1'b0;
+		end
+		else if (finish_reg) begin
+			if(buffer_valid) begin
+				finish_buffer <= 1'b1;
+			end
+			else begin
+				data_queue_status <= 4'b1111;
+			end
 		end
 		else begin
 			if(encode_ready & compute_fetch & ~diff_ready) begin

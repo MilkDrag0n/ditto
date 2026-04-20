@@ -1,3 +1,5 @@
+`timescale 1ns/1ps
+
 module mini_cache (
 	input  clk,
 	input  reset,
@@ -19,30 +21,15 @@ module mini_cache (
 
 	integer i;
 	initial begin
-		data_pst_mem[15:0] = {
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4
-		};
-		data_now_mem[15:0] = {
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4
-		};
-		weight[15:0] = {
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4,
-			8'd1, 8'd2, 8'd3, 8'd4
-		};
-
-		for (i = 16; i < DEPTH; i = i + 1) begin
-			data_pst_mem[i] = i[7:0];
-			data_now_mem[i] = i[7:0] + 8'd1;
-			weight_mem[i]   = 8'h01;
+		for (i = 0; i < DEPTH; i = i + 1) begin
+			data_pst_mem[i] = 8'b0;
+			data_now_mem[i] = 8'b0;
+			weight_mem[i]   = 8'b0;
 		end
+
+		$readmemh("RTL/testbench/data/data_pst_mem.hex", data_pst_mem);
+		$readmemh("RTL/testbench/data/data_now_mem.hex", data_now_mem);
+		$readmemh("RTL/testbench/data/weight_mem.hex", weight_mem);
 	end
 
 	always @(posedge clk) begin
