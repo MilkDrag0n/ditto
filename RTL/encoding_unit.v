@@ -1,17 +1,29 @@
 // 在这种同样利用空间差异的硬件中，只需要一个偏移寄存器来存储空间偏移量，以及一个多路复用器来将前一时间步的输入切换为空间偏移量。
 module encoding_unit(
-	input clk,
-	input reset,
-	input [ 7:0] input_data_pst,
-	input [ 7:0] input_data_now,
-	input [ 7:0] input_weight,
-	input input_data_valid,
+	input  clk,
+	input  reset,
+	input  finish,
+	input  input_data_valid,
+	input  [23:0] fetch_data,
 	output encode_fetch, // 取数据, {input_data_valid, encode_fetch} = 01->11->11->...->00
 	output encode_ready, // full
-	input compute_fetch,
-	output [49:0] encoding_bus  // {meta_data, weight_queue, data_queue}
+	input  compute_fetch,
+	output [50:0] encoding_bus  // {finish, meta_data, weight_queue, data_queue}
+
+`ifdef DEBUG
+	,
+	output debug_queue_valid,
+	output [15:0] debug_data_queue,
+	output [31:0] debug_weight_queue
+`endif
+
 );
 
+	wire [ 7:0] data_pst;
+	wire [ 7:0] data_now;
+	wire [ 7:0] weight;
+
+	reg			finish_reg;
 	reg 		diff_ready;  // 第一拍差分完成
 	reg  [ 1:0] control_signal;
 	wire [ 7:0] data_diff;
@@ -28,15 +40,16 @@ module encoding_unit(
 	wire 		commit_buffer;
 	
 	// control
+	assign {data_pst, data_now, weight} = fetch_data;
 	assign encode_fetch = ~queue_full;
 	assign encode_ready = queue_full;
 	assign queue_full = &data_queue_status;
-	assign encoding_bus = {meta_data, weight_queue, data_queue};
+	assign encoding_bus = {finish_reg, meta_data, weight_queue, data_queue};
 	assign commit_buffer = encode_ready & compute_fetch & buffer_valid;
 
 	// 计算差分, 比较分类 00: 0bit, 01: 4bit, 1x:8bit
 	// 文章图片显示的是无符号的处理方法,但是实际上得是有符号的
-	assign data_diff = input_data_now - input_data_pst;
+	assign data_diff = data_now - data_pst;
 
 	always @(posedge clk) begin
 		if(reset) begin
@@ -44,13 +57,15 @@ module encoding_unit(
 			diff_ready <= 1'b0;
 			weight_reg <= 8'b0;
 			data_diff_reg <= 8'b0;
+			finish_reg <= 1'b0;
 		end
 		else if(input_data_valid) begin
 			control_signal[1] <= (data_diff[7:4] != {4{data_diff[3]}});
 			control_signal[0] <= (data_diff[3:0] != 4'b0);
 			diff_ready <= (data_diff != 8'b0);
-			weight_reg <= input_weight;
+			weight_reg <= weight;
 			data_diff_reg <= data_diff;
+			finish_reg <= finish;
 		end else begin
 			diff_ready <= 1'b0;
 		end
@@ -203,5 +218,31 @@ module encoding_unit(
 			end
 		end
 	end
+
+`ifdef DEBUG
+
+	reg full_first_clk;
+	reg has_full;
+	always @(posedge clk) begin
+		if(reset | ~queue_full) begin
+			full_first_clk <= 1'b0;
+			has_full <= 1'b0;
+		end
+		else if(has_full) begin
+			full_first_clk <= 1'b0;
+			has_full <= 1'b1;
+		end
+		else if(queue_full & ~has_full) begin
+			full_first_clk <= 1'b1;
+			has_full <= 1'b1;
+		end
+	end
+
+	assign debug_queue_valid  = queue_full & full_first_clk;
+	assign debug_data_queue   = data_queue;
+	assign debug_weight_queue = weight_queue;
+	
+`endif
+
 
 endmodule

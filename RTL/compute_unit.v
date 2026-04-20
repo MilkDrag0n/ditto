@@ -5,12 +5,19 @@
 module compute_unit (
 	input clk,
 	input reset,
-	input flush, // 清空 partial sum
-	input  [49:0] encoding_bus  // {meta_data, weight_queue, data_queue}
+	input  [50:0] encoding_bus,  // {finish, meta_data, weight_queue, data_queue}
 	input  encode_ready,
 	output compute_fetch,
 	output [31:0] result
+
+`ifdef DEBUG
+	,
+	output debug_result_valid,
+	output [15:0] debug_result
+`endif
+
 );
+	reg finish; // 清空 partial sum
 	reg [1:0] meta_data;
 	reg [31:0] weight_queue;
 	reg [15:0] data_queue;
@@ -43,12 +50,13 @@ module compute_unit (
 	// 流水线寄存器
 	always @(posedge clk) begin
 		if(reset) begin
-			meta_data <= 0;
-			weight_queue <= 0;
-			data_queue <= 0;
+			finish <= 0;
+			meta_data <= 2'b0;
+			weight_queue <= 32'b0;
+			data_queue <= 16'b0;
 		end
 		else if(encode_ready & compute_fetch) begin
-			{meta_data, weight_queue, data_queue} <= encoding_bus;
+			{finish, meta_data, weight_queue, data_queue} <= encoding_bus;
 		end
 	end
 
@@ -70,7 +78,7 @@ module compute_unit (
 
 	// partial sum
 	always @(posedge clk) begin
-		if(reset | flush) begin
+		if(reset | finish) begin
 			res_reg <= 32'b0;
 		end
 		else if(encode_ready & compute_fetch) begin
@@ -79,6 +87,30 @@ module compute_unit (
 	end
 
 	assign result = res_reg;
+
+`ifdef DEBUG
+
+	reg finish_first_clk;
+	reg has_finish;
+	always @(posedge clk) begin
+		if(reset | ~finish) begin
+			finish_first_clk <= 1'b0;
+			has_finish <= 1'b0;
+		end
+		else if(has_finish) begin
+			finish_first_clk <= 1'b0;
+			has_finish <= 1'b1;
+		end
+		else if(finish & ~has_finish) begin
+			finish_first_clk <= 1'b1;
+			has_finish <= 1'b1;
+		end
+	end
+
+	assign debug_result_valid = finish & ~has_finish;
+	assign debug_result = result;
+
+`endif
 
 
 endmodule
