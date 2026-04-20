@@ -9,8 +9,11 @@ module ditto_tb;
 	wire debug_queue_valid;
 	wire [15:0] debug_data_queue;
 	wire [31:0] debug_weight_queue;
+	wire [ 1:0] debug_meta_data;
+	wire debug_pe_result_valid;
+	wire [17:0] debug_pe_result;
 	wire debug_result_valid;
-	wire [15:0] debug_result;
+	wire [31:0] debug_result;
 `endif
 
 	integer cycle_count;
@@ -26,6 +29,9 @@ module ditto_tb;
 		.debug_queue_valid(debug_queue_valid),
 		.debug_data_queue(debug_data_queue),
 		.debug_weight_queue(debug_weight_queue),
+		.debug_meta_data(debug_meta_data),
+		.debug_pe_result_valid(debug_pe_result_valid),
+		.debug_pe_result(debug_pe_result),
 		.debug_result_valid(debug_result_valid),
 		.debug_result(debug_result)
 `endif
@@ -62,7 +68,11 @@ module ditto_tb;
 
 `ifdef DEBUG
 		if (debug_queue_valid) begin
-			$display("[%0t] queue commit data=%h weight=%h", $time, debug_data_queue, debug_weight_queue);
+			$display("[%0t] queue commit meta=%b data=%h weight=%h", $time, debug_meta_data, debug_data_queue, debug_weight_queue);
+		end
+
+		if (debug_pe_result_valid) begin
+			$display("[%0t] pe result=%h", $time, debug_pe_result);
 		end
 `endif
 

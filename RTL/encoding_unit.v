@@ -16,7 +16,8 @@ module encoding_unit(
 	,
 	output debug_queue_valid,
 	output [15:0] debug_data_queue,
-	output [31:0] debug_weight_queue
+	output [31:0] debug_weight_queue,
+	output [ 1:0] debug_meta_data
 `endif
 
 );
@@ -40,7 +41,6 @@ module encoding_unit(
 	reg  [ 1:0] meta_data;
 	reg         buffer_valid;
 	wire 		queue_full;
-	wire 		commit_buffer;
 	
 	// control
 	assign {data_pst, data_now, weight} = fetch_data;
@@ -48,7 +48,6 @@ module encoding_unit(
 	assign encode_ready = queue_full;
 	assign queue_full = &data_queue_status;
 	assign encoding_bus = {finish_reg, meta_data, weight_queue, data_queue};
-	assign commit_buffer = encode_ready & compute_fetch & buffer_valid;
 
 	// 计算差分, 比较分类 00: 0bit, 01: 4bit, 1x:8bit
 	// 文章图片显示的是无符号的处理方法,但是实际上得是有符号的
@@ -243,26 +242,20 @@ module encoding_unit(
 
 `ifdef DEBUG
 
-	reg full_first_clk;
-	reg has_full;
+	reg have_full;
 	always @(posedge clk) begin
 		if(reset | ~queue_full) begin
-			full_first_clk <= 1'b0;
-			has_full <= 1'b0;
+			have_full <= 1'b0;
 		end
-		else if(has_full) begin
-			full_first_clk <= 1'b0;
-			has_full <= 1'b1;
-		end
-		else if(queue_full & ~has_full) begin
-			full_first_clk <= 1'b1;
-			has_full <= 1'b1;
+		else if(queue_full) begin
+			have_full <= 1'b1;
 		end
 	end
 
-	assign debug_queue_valid  = queue_full & full_first_clk;
+	assign debug_queue_valid  = queue_full & ~have_full;
 	assign debug_data_queue   = data_queue;
 	assign debug_weight_queue = weight_queue;
+	assign debug_meta_data    = meta_data;
 	
 `endif
 

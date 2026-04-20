@@ -29,11 +29,11 @@ module control_unit(
 
 	always@(posedge clk) begin
 		if(reset) begin
-			finish <= 1'b1;
+			finish <= 1'b0;
 		end
 		// finish 信号会清除这一轮读到的数据, 在这里清除的是0000_1000对应的data
-		else if(data_pst_addr == 8'b0000_1000) begin  // 计算 16 组数然后提交
-			finish <= 1'b0;
+		else if(data_pst_addr == 8'b0001_0000) begin  // 计算 16 组数然后提交
+			finish <= 1'b1;
 		end
 	end
 

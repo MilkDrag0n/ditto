@@ -13,8 +13,10 @@ module compute_unit (
 
 `ifdef DEBUG
 	,
+	output debug_pe_result_valid,
+	output [17:0] debug_pe_result,
 	output debug_result_valid,
-	output [15:0] debug_result
+	output [31:0] debug_result
 `endif
 
 );
@@ -51,7 +53,7 @@ module compute_unit (
 	// 流水线寄存器
 	always @(posedge clk) begin
 		if(reset) begin
-			finish <= 0;
+			finish <= 1'b0;
 			meta_data <= 2'b0;
 			weight_queue <= 32'b0;
 			data_queue <= 16'b0;
@@ -91,24 +93,20 @@ module compute_unit (
 
 `ifdef DEBUG
 
-	reg finish_first_clk;
-	reg has_finish;
+	assign debug_pe_result_valid = encode_ready & compute_fetch & ~finish;
+	assign debug_pe_result = pe_res;
+
+	reg have_finished;
 	always @(posedge clk) begin
 		if(reset | ~finish) begin
-			finish_first_clk <= 1'b0;
-			has_finish <= 1'b0;
+			have_finished <= 1'b0;
 		end
-		else if(has_finish) begin
-			finish_first_clk <= 1'b0;
-			has_finish <= 1'b1;
-		end
-		else if(finish & ~has_finish) begin
-			finish_first_clk <= 1'b1;
-			has_finish <= 1'b1;
+		else if(finish) begin
+			have_finished <= 1'b1;
 		end
 	end
 
-	assign debug_result_valid = finish & ~has_finish;
+	assign debug_result_valid = finish & ~have_finished;
 	assign debug_result = result;
 
 `endif

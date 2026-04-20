@@ -9,8 +9,11 @@ module ditto_top (
 	output debug_queue_valid,
 	output [15:0] debug_data_queue,
 	output [31:0] debug_weight_queue,
+	output [ 1:0] debug_meta_data,
+	output debug_pe_result_valid,
+	output [17:0] debug_pe_result,
 	output debug_result_valid,
-	output [15:0] debug_result
+	output [31:0] debug_result
 `endif
 
 );
@@ -72,7 +75,8 @@ module ditto_top (
 		,
 		.debug_queue_valid(debug_queue_valid),
 		.debug_data_queue(debug_data_queue),
-		.debug_weight_queue(debug_weight_queue)
+		.debug_weight_queue(debug_weight_queue),
+		.debug_meta_data(debug_meta_data)
 	`endif
 
 	);
@@ -87,6 +91,8 @@ module ditto_top (
 
 	`ifdef DEBUG
 		,
+		.debug_pe_result_valid(debug_pe_result_valid),
+		.debug_pe_result(debug_pe_result),
 		.debug_result_valid(debug_result_valid),
 		.debug_result(debug_result)
 	`endif
