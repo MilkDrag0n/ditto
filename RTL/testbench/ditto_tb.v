@@ -10,6 +10,7 @@ module ditto_tb;
 	wire [15:0] debug_data_queue;
 	wire [31:0] debug_weight_queue;
 	wire [ 1:0] debug_meta_data;
+	wire [ 1:0] debug_carry_comps;
 	wire debug_pe_result_valid;
 	wire [17:0] debug_pe_result;
 	wire debug_result_valid;
@@ -30,6 +31,7 @@ module ditto_tb;
 		.debug_data_queue(debug_data_queue),
 		.debug_weight_queue(debug_weight_queue),
 		.debug_meta_data(debug_meta_data),
+		.debug_carry_comps(debug_carry_comps),
 		.debug_pe_result_valid(debug_pe_result_valid),
 		.debug_pe_result(debug_pe_result),
 		.debug_result_valid(debug_result_valid),
@@ -67,21 +69,21 @@ module ditto_tb;
 		end
 
 `ifdef DEBUG
-		if (debug_queue_valid) begin
-			$display("[%0t] queue commit meta=%b data=%h weight=%h", $time, debug_meta_data, debug_data_queue, debug_weight_queue);
-		end
-
 		if (debug_pe_result_valid) begin
 			$display("[%0t] pe result=%h", $time, debug_pe_result);
+		end
+
+		if (debug_queue_valid) begin
+			$display("[%0t] queue commit meta=%b carry_comps=%b data=%h weight=%h", $time, debug_meta_data, debug_carry_comps, debug_data_queue, debug_weight_queue);
 		end
 `endif
 
 		if (!reset && dut.u_compute_unit.finish && !compute_finish_d) begin
 			seen_result <= 1'b1;
 `ifdef DEBUG
-			$display("[%0t] result valid debug=%h full=%h", $time, debug_result, dut.result);
+			$display("[%0t] debug result=%h full=%h", $time, debug_result, dut.result);
 `else
-			$display("[%0t] result valid full=%h", $time, dut.result);
+			$display("[%0t] result=%h", $time, dut.result);
 `endif
 		end
 

@@ -10,6 +10,7 @@ module ditto_top (
 	output [15:0] debug_data_queue,
 	output [31:0] debug_weight_queue,
 	output [ 1:0] debug_meta_data,
+	output [ 1:0] debug_carry_comps,
 	output debug_pe_result_valid,
 	output [17:0] debug_pe_result,
 	output debug_result_valid,
@@ -31,7 +32,7 @@ module ditto_top (
 	wire [ 7:0] input_data_now;
 	wire [ 7:0] input_weight;
 	wire [23:0] fetch_data;
-	wire [50:0] encoding_bus;
+	wire [52:0] encoding_bus;
 	wire [31:0] result;
 
 	control_unit u_control_unit (
@@ -76,7 +77,8 @@ module ditto_top (
 		.debug_queue_valid(debug_queue_valid),
 		.debug_data_queue(debug_data_queue),
 		.debug_weight_queue(debug_weight_queue),
-		.debug_meta_data(debug_meta_data)
+		.debug_meta_data(debug_meta_data),
+		.debug_carry_comps(debug_carry_comps)
 	`endif
 
 	);

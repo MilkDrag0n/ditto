@@ -10,14 +10,15 @@ module encoding_unit(
 	output encode_fetch, // 取数据, {input_data_valid, encode_fetch} = 01->11->11->...->00
 	output encode_ready, // full
 	input  compute_fetch,
-	output [50:0] encoding_bus  // {finish, meta_data, weight_queue, data_queue}
+	output [52:0] encoding_bus  // {finish, meta_data, weight_queue, data_queue}
 
 `ifdef DEBUG
 	,
 	output debug_queue_valid,
 	output [15:0] debug_data_queue,
 	output [31:0] debug_weight_queue,
-	output [ 1:0] debug_meta_data
+	output [ 1:0] debug_meta_data,
+	output [ 1:0] debug_carry_comps
 `endif
 
 );
@@ -28,6 +29,7 @@ module encoding_unit(
 
 	reg			finish_reg;
 	reg			finish_buffer;
+	wire        real_finish;
 	reg 		diff_ready;  // 第一拍差分完成
 	reg  [ 1:0] control_signal;
 	wire [ 7:0] data_diff;
@@ -41,13 +43,17 @@ module encoding_unit(
 	reg  [ 1:0] meta_data;
 	reg         buffer_valid;
 	wire 		queue_full;
+	reg			carry_comp_reg;     // 进位补偿的前提是 8bit 负数
+	reg         carry_comp_reg_buffer;
+	reg  [ 1:0] carry_comps;  // 进位补偿
 	
 	// control
 	assign {data_pst, data_now, weight} = fetch_data;
 	assign encode_fetch = ~queue_full;
-	assign encode_ready = queue_full;
+	assign encode_ready = queue_full | finish_reg;
 	assign queue_full = &data_queue_status;
-	assign encoding_bus = {finish_reg, meta_data, weight_queue, data_queue};
+	assign encoding_bus = {real_finish, carry_comps, meta_data, weight_queue, data_queue};
+	assign real_finish = finish_reg & ~buffer_valid;
 
 	// 计算差分, 比较分类 00: 0bit, 01: 4bit, 1x:8bit
 	// 文章图片显示的是无符号的处理方法,但是实际上得是有符号的
@@ -60,6 +66,7 @@ module encoding_unit(
 			weight_reg <= 8'b0;
 			data_diff_reg <= 8'b0;
 			finish_reg <= 1'b0;
+			carry_comp_reg   <= 1'b0;
 		end
 		else if(input_data_valid) begin
 			control_signal[1] <= (data_diff[7:4] != {4{data_diff[3]}});
@@ -68,6 +75,7 @@ module encoding_unit(
 			weight_reg <= weight;
 			data_diff_reg <= data_diff;
 			finish_reg <= finish;
+			carry_comp_reg   <= data_diff[7:4] != {4{data_diff[3]}};
 		end else begin
 			diff_ready <= 1'b0;
 		end
@@ -77,7 +85,7 @@ module encoding_unit(
 	// 重排入队
 	// 需要写一个队列, 4条4bit, 第1、3条可以表示高位,用meta_data记录
 	always @(posedge clk) begin 
-		if(reset) begin
+		if(reset | (finish_reg & encode_ready & compute_fetch & ~buffer_valid)) begin
 			data_queue_status <= 4'b0;
 			meta_data <= 2'b0;
 			data_queue <= 16'b0;
@@ -86,23 +94,21 @@ module encoding_unit(
 			data_buffer <= 4'b0;
 			weight_buffer <= 8'b0;
 			finish_buffer <= 1'b0;
+			carry_comp_reg_buffer <= 1'b0;
+			carry_comps <= 2'b0;
 		end
-		else if(finish_buffer & encode_ready & compute_fetch) begin
-			data_queue_status <= 4'b1111;
-			meta_data <= 2'b0;
-			data_queue <= {12'b0, data_buffer};
-			weight_queue <= {24'b0, weight_buffer};
-			buffer_valid <= 1'b0;
-			data_buffer <= 4'b0;
-			weight_buffer <= 8'b0;
-			finish_buffer <= 1'b0;
-		end
-		else if (finish_reg) begin
+		else if (finish_reg & encode_ready & compute_fetch) begin
 			if(buffer_valid) begin
-				finish_buffer <= 1'b1;
-			end
-			else begin
 				data_queue_status <= 4'b1111;
+				meta_data <= 2'b0;
+				data_queue <= {12'b0, data_buffer};
+				weight_queue <= {24'b0, weight_buffer};
+				buffer_valid <= 1'b0;
+				data_buffer <= 4'b0;
+				weight_buffer <= 8'b0;
+				finish_buffer <= 1'b0;
+				carry_comp_reg_buffer <= 1'b0;
+				carry_comps <= {1'b0, carry_comp_reg_buffer};
 			end
 		end
 		else begin
@@ -111,11 +117,13 @@ module encoding_unit(
 					data_queue_status <= 4'b0001;
 					data_queue <= {12'b0, data_buffer};
 					weight_queue <= {24'b0, weight_buffer};
+					carry_comps <= {1'b0, carry_comp_reg_buffer};
 				end
 				else begin
 					data_queue_status <= 4'b0;
 					data_queue <= 16'b0;
 					weight_queue <= 32'b0;
+					carry_comps <= 2'b0;
 				end
 				meta_data <= 2'b0;
 				buffer_valid <= 1'b0;
@@ -144,6 +152,7 @@ module encoding_unit(
 								buffer_valid <= 1'b0;
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
+								carry_comps[1] <= carry_comp_reg;
 							end
 						endcase						
 					end
@@ -167,6 +176,7 @@ module encoding_unit(
 								buffer_valid <= 1'b0;
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
+								carry_comps[0] <= carry_comp_reg;
 							end
 						endcase	
 					end
@@ -203,6 +213,7 @@ module encoding_unit(
 								data_queue[7:0] <= data_diff_reg;
 								meta_data[0] <= 1'b1;
 								weight_queue[15:0] <= {2{weight_reg}};
+								carry_comps[0] <= carry_comp_reg;
 							end
 							// 0001填成0111
 							else if(data_queue_status == 4'b0001) begin
@@ -211,6 +222,7 @@ module encoding_unit(
 								data_queue[11:8] <= data_diff_reg[3:0];
 								meta_data[0] <= 1'b1;
 								weight_queue[23:8] <= {2{weight_reg}};
+								carry_comps[1] <= carry_comp_reg;
 							end
 							// 0010规定不存在,因为我的设计不会有溢出高8位
 							// 0011填成1111
@@ -219,6 +231,7 @@ module encoding_unit(
 								data_queue[15:8] <= data_diff_reg;
 								meta_data[1] <= 1'b1;
 								weight_queue[31:16] <= {2{weight_reg}};
+								carry_comps[1] <= carry_comp_reg;
 							end
 							// 0100, 0101, 0110不存在,溢出优先填低处
 							// 0111填高4位,溢出低4位
@@ -252,10 +265,11 @@ module encoding_unit(
 		end
 	end
 
-	assign debug_queue_valid  = queue_full & ~have_full;
+	assign debug_queue_valid  = queue_full;
 	assign debug_data_queue   = data_queue;
 	assign debug_weight_queue = weight_queue;
 	assign debug_meta_data    = meta_data;
+	assign debug_carry_comps  = carry_comps;
 	
 `endif
 
