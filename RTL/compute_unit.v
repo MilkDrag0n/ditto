@@ -27,7 +27,8 @@ module compute_unit (
 	reg [31:0] weight_queue;
 	reg [15:0] data_queue;
 
-	wire [11:0] comp_data;
+	wire [12:0] comp_data;
+	wire [ 8:0] comp_sum;
 
 	wire signed [3:0] mul_src1;
 	wire signed [3:0] mul_src2;
@@ -81,12 +82,13 @@ module compute_unit (
 	assign mul_res3_ext = {{2{mul_res3[15]}}, mul_res3};
 	assign mul_res4_ext = {{2{mul_res4[15]}}, mul_res4};
 
-	assign comp_data = (((carry_comps[0] & mul_src1[3]) ? weight1 : 0)
-					 + ((carry_comps[1] & mul_src3[3]) ? weight3 : 0)) << 4;
+	assign comp_sum = ((carry_comps[0] & mul_src1[3]) ? {weight1[7], weight1} : 0)
+					+ ((carry_comps[1] & mul_src3[3]) ? {weight3[7], weight3} : 0);
+	assign comp_data = {{4{comp_sum[8]}}, comp_sum} << 4;
 
 	assign pe_res   = (meta_data[0] ? (mul_res2_ext << 4) : mul_res2_ext) + mul_res1_ext
 					+ (meta_data[1] ? (mul_res4_ext << 4) : mul_res4_ext) + mul_res3_ext
-					+ comp_data;
+					+ {{5{comp_data[12]}}, comp_data};
 
 	// partial sum
 	always @(posedge clk) begin
@@ -98,19 +100,23 @@ module compute_unit (
 		end
 	end
 
-	assign result = res_reg + pe_res;
+	assign result = res_reg + {{14{pe_res[17]}}, pe_res};
 
 `ifdef DEBUG
 	reg pe_result_valid;
+	reg pe_packet_has_data;
 	always @(posedge clk) begin
 		if(reset) begin
 			pe_result_valid <= 1'b0;
+			pe_packet_has_data <= 1'b0;
 		end
 		else if(encode_ready & compute_fetch) begin
 			pe_result_valid <= 1'b1;
+			pe_packet_has_data <= |encoding_bus[15:0];
 		end
 		else begin
 			pe_result_valid <= 1'b0;
+			pe_packet_has_data <= 1'b0;
 		end
 	end
 
@@ -124,7 +130,7 @@ module compute_unit (
 		end
 	end
 
-	assign debug_pe_result_valid = pe_result_valid & ~have_finished;
+	assign debug_pe_result_valid = pe_result_valid & pe_packet_has_data;
 	assign debug_pe_result = pe_res;
 
 	assign debug_result_valid = finish & ~have_finished;

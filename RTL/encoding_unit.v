@@ -59,13 +59,21 @@ module encoding_unit(
 	// 文章图片显示的是无符号的处理方法,但是实际上得是有符号的
 	assign data_diff = data_now - data_pst;
 
+	always@(posedge clk) begin
+		if(reset) begin
+			finish_reg <= 1'b0;
+		end
+		else if(input_data_valid) begin
+			finish_reg <= finish;
+		end
+	end
+
 	always @(posedge clk) begin
 		if(reset) begin
 			control_signal <= 2'b0;
 			diff_ready <= 1'b0;
 			weight_reg <= 8'b0;
 			data_diff_reg <= 8'b0;
-			finish_reg <= 1'b0;
 			carry_comp_reg   <= 1'b0;
 		end
 		else if(input_data_valid) begin
@@ -74,7 +82,6 @@ module encoding_unit(
 			diff_ready <= (data_diff != 8'b0);
 			weight_reg <= weight;
 			data_diff_reg <= data_diff;
-			finish_reg <= finish;
 			carry_comp_reg   <= data_diff[7:4] != {4{data_diff[3]}};
 		end else begin
 			diff_ready <= 1'b0;

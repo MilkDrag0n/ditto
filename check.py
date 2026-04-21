@@ -28,12 +28,19 @@ def read_hex_values(path: Path) -> list[int]:
 	return [int(token, 16) for token in path.read_text().split()]
 
 
-def parse_finish_count(path: Path) -> int:
+def parse_batch_size(path: Path) -> int:
 	text = path.read_text()
-	match = re.search(r"data_pst_addr\s*==\s*8'b([01_]+)", text)
-	if not match:
-		raise ValueError(f"failed to find finish count in {path}")
-	return int(match.group(1).replace("_", ""), 2)
+	match = re.search(r"(?:data_pst_addr|data_now_addr|weight_addr)\s*==\s*8'b([01_]+)", text)
+	if match:
+		return int(match.group(1).replace("_", ""), 2)
+
+	if re.search(r"(?:data_pst_addr|data_now_addr|weight_addr)\[3:0\]\s*==\s*4'hf", text, re.IGNORECASE):
+		return 16
+
+	if re.search(r"(?:data_pst_addr|data_now_addr|weight_addr)\[3:0\]\s*==\s*4'b1111", text):
+		return 16
+
+	raise ValueError(f"failed to find batch size in {path}")
 
 
 def sign_extend_4(value: int) -> int:
@@ -220,10 +227,27 @@ def calc_final_result(pe_results: list[int]) -> int:
 	return total
 
 
-def parse_log(log_path: Path) -> tuple[list[QueuePacket], list[int], int | None]:
+def calc_input_final_result(
+	data_pst_values: list[int],
+	data_now_values: list[int],
+	weight_values: list[int],
+	finish_count: int,
+) -> int:
+	total = 0
+	for data_pst, data_now, weight in zip(
+		data_pst_values[:finish_count],
+		data_now_values[:finish_count],
+		weight_values[:finish_count],
+	):
+		diff = sign_extend_8((data_now - data_pst) & 0xFF)
+		total = mask_u32(total + diff * sign_extend_8(weight & 0xFF))
+	return total
+
+
+def parse_log(log_path: Path) -> tuple[list[QueuePacket], list[int], list[int]]:
 	queue_packets: list[QueuePacket] = []
 	pe_results: list[int] = []
-	final_result: int | None = None
+	final_results: list[int] = []
 
 	for line in log_path.read_text().splitlines():
 		queue_match = QUEUE_RE.search(line)
@@ -245,9 +269,9 @@ def parse_log(log_path: Path) -> tuple[list[QueuePacket], list[int], int | None]
 
 		final_match = FINAL_RE.search(line)
 		if final_match:
-			final_result = int(final_match.group("full"), 16)
+			final_results.append(int(final_match.group("full"), 16))
 
-	return queue_packets, pe_results, final_result
+	return queue_packets, pe_results, final_results
 
 
 def format_queue(packet: QueuePacket) -> str:
@@ -265,16 +289,38 @@ def format_final(value: int) -> str:
 	return f"debug result={mask_u32(value):08x}"
 
 
-def compare_section(name: str, expected: list[str], actual: list[str]) -> bool:
+def format_batch_item_label(batch_index: int, item_index: int) -> str:
+	return f"batch {batch_index} [{item_index}]"
+
+
+def format_batch_label(batch_index: int) -> str:
+	return f"batch {batch_index}"
+
+
+def compare_section(
+	name: str,
+	expected: list[str],
+	actual: list[str],
+	expected_labels: list[str],
+	actual_labels: list[str],
+) -> bool:
 	print(name)
 	ok = len(expected) == len(actual)
 	for index in range(max(len(expected), len(actual))):
 		expected_line = expected[index] if index < len(expected) else "<missing>"
 		actual_line = actual[index] if index < len(actual) else "<missing>"
+		expected_label = expected_labels[index] if index < len(expected_labels) else "<missing>"
+		actual_label = actual_labels[index] if index < len(actual_labels) else "<missing>"
 		match = expected_line == actual_line
 		ok &= match
+		if expected_label == actual_label or actual_label == "<missing>":
+			label = expected_label
+		elif expected_label == "<missing>":
+			label = actual_label
+		else:
+			label = f"expected {expected_label}, actual {actual_label}"
 		print(
-			f"  [{index}] {'PASS' if match else 'FAIL'} "
+			f"  {label} {'PASS' if match else 'FAIL'} "
 			f"expected: {expected_line} | actual: {actual_line}"
 		)
 	print()
@@ -288,6 +334,7 @@ def main() -> int:
 	parser.add_argument("--data-now", default="RTL/testbench/data/data_now_mem.hex")
 	parser.add_argument("--weight", default="RTL/testbench/data/weight_mem.hex")
 	parser.add_argument("--control", default="RTL/control_unit.v")
+	parser.add_argument("--direct-final-only", action="store_true")
 	args = parser.parse_args()
 
 	log_path = Path(args.log)
@@ -298,39 +345,125 @@ def main() -> int:
 	data_pst_values = read_hex_values(Path(args.data_pst))
 	data_now_values = read_hex_values(Path(args.data_now))
 	weight_values = read_hex_values(Path(args.weight))
-	finish_count = parse_finish_count(Path(args.control))
+	batch_size = parse_batch_size(Path(args.control))
+	total_count = min(len(data_pst_values), len(data_now_values), len(weight_values))
+	batch_count = total_count // batch_size
 
-	expected_queue = build_queue_packets(
-		data_pst_values,
-		data_now_values,
-		weight_values,
-		finish_count,
-	)
-	expected_pe = [calc_pe_result(packet) for packet in expected_queue]
-	expected_final = calc_final_result(expected_pe)
+	expected_queue: list[QueuePacket] = []
+	expected_queue_labels: list[str] = []
+	expected_pe: list[int] = []
+	expected_pe_labels: list[str] = []
+	expected_finals: list[int] = []
+	expected_final_labels: list[str] = []
+	expected_input_finals: list[int] = []
+	expected_input_final_labels: list[str] = []
+	for batch_index in range(batch_count):
+		start = batch_index * batch_size
+		end = start + batch_size
+		batch_packets = build_queue_packets(
+			data_pst_values[start:end],
+			data_now_values[start:end],
+			weight_values[start:end],
+			batch_size,
+		)
+		batch_pe_packets = [packet for packet in batch_packets if packet.data != 0]
+		batch_pe = [calc_pe_result(packet) for packet in batch_pe_packets]
+		expected_queue.extend(batch_packets)
+		expected_queue_labels.extend(
+			format_batch_item_label(batch_index, item_index)
+			for item_index in range(len(batch_packets))
+		)
+		expected_pe.extend(batch_pe)
+		expected_pe_labels.extend(
+			format_batch_item_label(batch_index, item_index)
+			for item_index in range(len(batch_pe))
+		)
+		expected_finals.append(calc_final_result(batch_pe))
+		expected_final_labels.append(format_batch_label(batch_index))
+		expected_input_finals.append(
+			calc_input_final_result(
+				data_pst_values[start:end],
+				data_now_values[start:end],
+				weight_values[start:end],
+				batch_size,
+			)
+		)
+		expected_input_final_labels.append(format_batch_label(batch_index))
 
-	actual_queue, actual_pe, actual_final = parse_log(log_path)
+	actual_queue, actual_pe, actual_finals = parse_log(log_path)
+	actual_queue_labels: list[str] = []
+	actual_pe_labels: list[str] = []
+	actual_final_labels: list[str] = []
+	actual_batch_index = 0
+	actual_queue_index = 0
+	actual_pe_index = 0
+	for line in log_path.read_text().splitlines():
+		if QUEUE_RE.search(line):
+			actual_queue_labels.append(format_batch_item_label(actual_batch_index, actual_queue_index))
+			actual_queue_index += 1
+			continue
+		if PE_RE.search(line):
+			actual_pe_labels.append(format_batch_item_label(actual_batch_index, actual_pe_index))
+			actual_pe_index += 1
+			continue
+		if FINAL_RE.search(line):
+			actual_final_labels.append(format_batch_label(actual_batch_index))
+			actual_batch_index += 1
+			actual_queue_index = 0
+			actual_pe_index = 0
 
 	expected_queue_lines = [format_queue(packet) for packet in expected_queue]
 	actual_queue_lines = [format_queue(packet) for packet in actual_queue]
 	expected_pe_lines = [format_pe(value) for value in expected_pe]
 	actual_pe_lines = [format_pe(value) for value in actual_pe]
+	expected_final_lines = [format_final(value) for value in expected_finals]
+	actual_final_lines = [format_final(value) for value in actual_finals]
+	expected_input_final_lines = [format_final(value) for value in expected_input_finals]
 
 	all_ok = True
-	print(f"finish_count: {finish_count}")
+	print(f"batch_size: {batch_size}")
 	print()
-	all_ok &= compare_section("Queue Results", expected_queue_lines, actual_queue_lines)
-	all_ok &= compare_section("PE Results", expected_pe_lines, actual_pe_lines)
+	if args.direct_final_only:
+		all_ok &= compare_section(
+			"Input Final Results",
+			expected_input_final_lines,
+			actual_final_lines,
+			expected_input_final_labels,
+			actual_final_labels,
+		)
+		print(f"Overall: {'PASS' if all_ok else 'FAIL'}")
+		return 0 if all_ok else 1
 
-	expected_final_line = format_final(expected_final)
-	actual_final_line = format_final(actual_final) if actual_final is not None else "<missing>"
-	final_ok = expected_final_line == actual_final_line
-	all_ok &= final_ok
-	print(
-		f"Final Result: {'PASS' if final_ok else 'FAIL'} "
-		f"expected: {expected_final_line} | actual: {actual_final_line}"
+	all_ok &= compare_section(
+		"Queue Results",
+		expected_queue_lines,
+		actual_queue_lines,
+		expected_queue_labels,
+		actual_queue_labels,
 	)
-	print()
+	all_ok &= compare_section(
+		"PE Results",
+		expected_pe_lines,
+		actual_pe_lines,
+		expected_pe_labels,
+		actual_pe_labels,
+	)
+
+	all_ok &= compare_section(
+		"Final Results",
+		expected_final_lines,
+		actual_final_lines,
+		expected_final_labels,
+		actual_final_labels,
+	)
+	all_ok &= compare_section(
+		"Input Final Results",
+		expected_input_final_lines,
+		actual_final_lines,
+		expected_input_final_labels,
+		actual_final_labels,
+	)
+
 	print(f"Overall: {'PASS' if all_ok else 'FAIL'}")
 	return 0 if all_ok else 1
 

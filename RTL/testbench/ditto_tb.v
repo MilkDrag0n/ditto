@@ -2,6 +2,9 @@
 
 module ditto_tb;
 
+	localparam integer EXPECTED_RESULT_COUNT = 16;
+	localparam integer TIMEOUT_CYCLES = 2000;
+
 	reg clk;
 	reg reset;
 
@@ -18,8 +21,8 @@ module ditto_tb;
 `endif
 
 	integer cycle_count;
+	integer result_count;
 	reg compute_finish_d;
-	reg seen_result;
 
 	ditto_top dut (
 		.clk(clk),
@@ -47,8 +50,8 @@ module ditto_tb;
 	initial begin
 		reset = 1'b1;
 		cycle_count = 0;
+		result_count = 0;
 		compute_finish_d = 1'b0;
-		seen_result = 1'b0;
 
 `ifdef DEBUG
 		$dumpfile("build/ditto_tb.vcd");
@@ -63,6 +66,7 @@ module ditto_tb;
 		cycle_count <= cycle_count + 1;
 		if (reset) begin
 			compute_finish_d <= 1'b0;
+			result_count <= 0;
 		end
 		else begin
 			compute_finish_d <= dut.u_compute_unit.finish;
@@ -79,21 +83,20 @@ module ditto_tb;
 `endif
 
 		if (!reset && dut.u_compute_unit.finish && !compute_finish_d) begin
-			seen_result <= 1'b1;
+			result_count <= result_count + 1;
 `ifdef DEBUG
 			$display("[%0t] debug result=%h full=%h", $time, debug_result, dut.result);
 `else
 			$display("[%0t] result=%h", $time, dut.result);
 `endif
+			if (result_count + 1 == EXPECTED_RESULT_COUNT) begin
+				$display("[%0t] finish simulation", $time);
+				$finish;
+			end
 		end
 
-		if (!reset && cycle_count > 200 && !seen_result) begin
+		if (!reset && cycle_count > TIMEOUT_CYCLES && result_count < EXPECTED_RESULT_COUNT) begin
 			$display("[%0t] ERROR: simulation timeout", $time);
-			$finish;
-		end
-
-		if (seen_result) begin
-			$display("[%0t] finish simulation", $time);
 			$finish;
 		end
 	end

@@ -5,6 +5,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 BUILD_DIR="$SCRIPT_DIR/build"
 SIM_OUT="$BUILD_DIR/ditto_sim.out"
 LOG_FILE="$BUILD_DIR/sim.log"
+CHECK_LOG="$BUILD_DIR/check.log"
+TEST_LOG="$BUILD_DIR/test.log"
 VCD_FILE="$BUILD_DIR/ditto_tb.vcd"
 
 mkdir -p "$BUILD_DIR"
@@ -21,7 +23,7 @@ run_sim() {
 	(
 		cd "$SCRIPT_DIR"
 		vvp "$SIM_OUT"
-	) | tee "$LOG_FILE"
+	) | tee "$LOG_FILE" >/dev/null
 
 	printf 'simulator: %s\n' "$SIM_OUT"
 	printf 'log      : %s\n' "$LOG_FILE"
@@ -30,8 +32,22 @@ run_sim() {
 
 run_check() {
 	run_sim
-	cd "$SCRIPT_DIR"
-	python3 "$SCRIPT_DIR/check.py" --log "$LOG_FILE"
+	(
+		cd "$SCRIPT_DIR"
+		python3 "$SCRIPT_DIR/check.py" --log "$LOG_FILE"
+	) | tee "$CHECK_LOG"
+
+	printf 'check log: %s\n' "$CHECK_LOG"
+}
+
+run_test() {
+	run_sim
+	(
+		cd "$SCRIPT_DIR"
+		python3 "$SCRIPT_DIR/check.py" --log "$LOG_FILE" --direct-final-only
+	) | tee "$TEST_LOG"
+
+	printf 'test log : %s\n' "$TEST_LOG"
 }
 
 case "${1:-}" in
@@ -41,8 +57,11 @@ case "${1:-}" in
 	--check)
 		run_check
 		;;
+	--test)
+		run_test
+		;;
 	*)
-		printf 'usage: %s [--check]\n' "$0" >&2
+		printf 'usage: %s [--check|--test]\n' "$0" >&2
 		exit 2
 		;;
 esac

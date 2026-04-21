@@ -75,8 +75,6 @@ assign comp_data = (((carry_comps[0] & mul_src1[3]) ? weight1 : 0)
 
 
 ## 运行测试
-初步测试激活数据顺序(差分之后的bit):  
-`0 // 4, 4, 4, 4 // 8, 8 // 4, 4, 8 // 4, 8, 4 // 8, 4, 8`  
 
 运行仿真并生成相关文件:  
 ```sh
@@ -88,3 +86,13 @@ assign comp_data = (((carry_comps[0] & mul_src1[3]) ? weight1 : 0)
 ./run.sh --check
 ```
 
+直接对计算结果进行验证:  
+```sh
+./run.sh --test
+```
+
+
+初步测试激活数据顺序(差分之后的bit):  
+`0 // 4, 4, 4, 4 // 8, 8 // 4, 4, 8 // 4, 8, 4 // 8, 4, 8`  
+经过修改, 可以连续计算16组数据  
+![alt text](./pics/image2.png)
