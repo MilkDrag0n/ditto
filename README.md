@@ -55,7 +55,7 @@ control_signal[0] <= (data_diff[3:0] != 4'b0);
 比如: `8'b00001111`, 拆成 `4'b0000` 和 `4'b1111` 之后低4位就变成负数了, 显然直接计算是会出问题的  
 
 进位补偿: `Value = 16 * H_signed + L_signed + 16 * b_3`  
-可以看到,  进位补偿的条件: 差分结果是 `8bit && b_3.` 在代码实现中, 我们将这两个条件分散到 `Encoding Unit` 和 `Compute Unit` 两个模块  
+可以看到,  进位补偿的条件: `差分结果是 8bit && b_3.` 在代码实现中, 我们将这两个条件分散到 `Encoding Unit` 和 `Compute Unit` 两个模块  
 
 #### 具体实现
 在 `Encoding Unit` 中, 我们模仿 `meta_data` 新增 `carry_comps` 信号, 代表这个数据是否需要进位补偿.  
