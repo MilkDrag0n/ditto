@@ -2,7 +2,7 @@
 
 // 支持全位宽（8位）和低位宽（4位）操作
 // 使用两个乘法器 (4bit * 8bit) 和移位逻辑来支持8位激活值 (可以在重排的时候把4和8分开/)
-// 如果是8bit负数, 需要使用进位补偿: Value = 16 * H_signed + L_signed + 16 * b_3
+// 如果是8bit, 需要使用进位补偿: Value = 16 * H_signed + L_signed + 16 * b_3
 // compensation_data = 16 * b_3 * weight
 module compute_unit (
 	input clk,
