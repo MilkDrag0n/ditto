@@ -64,8 +64,9 @@ control_signal[0] <= (data_diff[3:0] != 4'b0);
 
 在 `Compute Unit` 中, 定义补偿数据, 加到原本的计算结果中  
 ```verilog
-assign comp_data = (((carry_comps[0] & mul_src1[3]) ? weight1 : 0)
-                  + ((carry_comps[1] & mul_src3[3]) ? weight3 : 0)) << 4;
+assign comp_sum = ((carry_comps[0] & mul_src1[3]) ? {weight1[7], weight1} : 0)
+				+ ((carry_comps[1] & mul_src3[3]) ? {weight3[7], weight3} : 0);
+assign comp_data = {{4{comp_sum[8]}}, comp_sum} << 4;
 ```
 
 
