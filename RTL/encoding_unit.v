@@ -23,6 +23,8 @@ module encoding_unit(
 
 );
 
+	wire use_origin;
+
 	wire [ 7:0] data_pst;
 	wire [ 7:0] data_now;
 	wire [ 7:0] weight;
@@ -48,6 +50,7 @@ module encoding_unit(
 	reg  [ 1:0] carry_comps;  // 进位补偿
 	
 	// control
+	assign use_origin = 1'b1;
 	assign {data_pst, data_now, weight} = fetch_data;
 	assign encode_fetch = ~queue_full;
 	assign encode_ready = queue_full | finish_reg;
@@ -77,12 +80,22 @@ module encoding_unit(
 			carry_comp_reg   <= 1'b0;
 		end
 		else if(input_data_valid) begin
-			control_signal[1] <= (data_diff[7:4] != {4{data_diff[3]}});
-			control_signal[0] <= (data_diff[3:0] != 4'b0);
-			diff_ready <= (data_diff != 8'b0);
-			weight_reg <= weight;
-			data_diff_reg <= data_diff;
-			carry_comp_reg   <= data_diff[7:4] != {4{data_diff[3]}};
+			if(use_origin) begin
+				control_signal[1] <= (data_diff[7:4] != {4{data_diff[3]}});
+				control_signal[0] <= (data_diff[3:0] != 4'b0);
+				diff_ready <= 1'b1;
+				weight_reg <= weight;
+				data_diff_reg <= data_now;
+				carry_comp_reg   <= 1'b1;
+			end
+			else begin
+				control_signal[1] <= (data_diff[7:4] != {4{data_diff[3]}});
+				control_signal[0] <= (data_diff[3:0] != 4'b0);
+				diff_ready <= (data_diff != 8'b0);
+				weight_reg <= weight;
+				data_diff_reg <= data_diff;
+				carry_comp_reg   <= data_diff[7:4] != {4{data_diff[3]}};
+			end
 		end else begin
 			diff_ready <= 1'b0;
 		end
@@ -149,6 +162,7 @@ module encoding_unit(
 								buffer_valid <= 1'b0;
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
+								carry_comps <= {1'b0, carry_comp_reg_buffer};
 							end
 							2'b1x: begin
 								// 0001填成0111
@@ -159,7 +173,7 @@ module encoding_unit(
 								buffer_valid <= 1'b0;
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
-								carry_comps[1] <= carry_comp_reg;
+								carry_comps <= {carry_comp_reg, carry_comp_reg_buffer};
 							end
 						endcase						
 					end
@@ -173,6 +187,7 @@ module encoding_unit(
 								buffer_valid <= 1'b0;
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
+								carry_comps <= 2'b0;
 							end
 							2'b1x: begin
 								// 0000填成0011
@@ -183,7 +198,7 @@ module encoding_unit(
 								buffer_valid <= 1'b0;
 								data_buffer <= 4'b0;
 								weight_buffer <= 8'b0;
-								carry_comps[0] <= carry_comp_reg;
+								carry_comps <= {1'b0, carry_comp_reg};
 							end
 						endcase	
 					end
@@ -220,7 +235,7 @@ module encoding_unit(
 								data_queue[7:0] <= data_diff_reg;
 								meta_data[0] <= 1'b1;
 								weight_queue[15:0] <= {2{weight_reg}};
-								carry_comps[0] <= carry_comp_reg;
+								carry_comps <= {1'b0, carry_comp_reg};
 							end
 							// 0001填成0111
 							else if(data_queue_status == 4'b0001) begin
@@ -250,6 +265,7 @@ module encoding_unit(
 								meta_data[1] <= 1'b1;
 								weight_queue[31:24] <= weight_reg;
 								weight_buffer <= weight_reg;
+								carry_comp_reg_buffer <= carry_comp_reg;
 							end
 							// 1000,1001,1010,1011,1100,1101,1110不存在,溢出优先填低处
 						end

@@ -97,3 +97,4 @@ assign comp_data = {{4{comp_sum[8]}}, comp_sum} << 4;
 `0 // 4, 4, 4, 4 // 8, 8 // 4, 4, 8 // 4, 8, 4 // 8, 4, 8`  
 经过修改, 可以连续计算16组数据  
 ![alt text](./pics/image2.png)
+增加use_origin配置, 简单实现, 没有专门设计一个新测试, 可以复用  
